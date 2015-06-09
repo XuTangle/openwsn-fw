@@ -15,6 +15,11 @@
 
 //=========================== debug define ====================================
 
+//=========================== static ==========================================
+static const uint8_t chTemplate_default[] = {
+   5,6,12,7,15,4,14,11,8,0,1,2,13,3,9,10
+};
+
 //=========================== define ==========================================
 
 #define SYNCHRONIZING_CHANNEL       20 // channel the mote listens on to synchronize
@@ -71,6 +76,8 @@
 #define IEEE802154E_MLME_SLOTFRAME_LINK_IE_SUBID_SHIFT     1
 #define IEEE802154E_MLME_TIMESLOT_IE_SUBID                 0x1c
 #define IEEE802154E_MLME_TIMESLOT_IE_SUBID_SHIFT           1
+#define IEEE802154E_MLME_CHANNELHOPPING_IE_SUBID           0x09
+#define IEEE802154E_MLME_CHANNELHOPPING_IE_SUBID_SHIFT     1
 
 #define IEEE802154E_MLME_IE_GROUPID                        0x01
 #define IEEE802154E_ACK_NACK_TIMECORRECTION_ELEMENTID      0x1E
@@ -121,17 +128,20 @@ typedef enum {
    S_RXPROC                  = 0x19,   // processing received data
 } ieee154e_state_t;
 
+#define  TIMESLOT_TEMPLATE_ID         0x00
+#define  CHANNELHOPPING_TEMPLATE_ID   0x00
+
 // Atomic durations
 // expressed in 32kHz ticks:
 //    - ticks = duration_in_seconds * 32768
 //    - duration_in_seconds = ticks / 32768
 enum ieee154e_atomicdurations_enum {
    // time-slot related
-   TsTxOffset                =  131,                  //  4000us
-   TsLongGT                  =   43,                  //  1300us
-   TsTxAckDelay              =  151,                  //  4606us
-   TsShortGT                 =   16,                  //   500us
-   TsSlotDuration            =  PORT_TsSlotDuration,  // 15000us
+   TsTxOffset                =   70,                  //  2120us
+   TsLongGT                  =   36,                  //  1100us
+   TsTxAckDelay              =   33,                  //  1000us
+   TsShortGT                 =    7,                  //   500us
+   TsSlotDuration            =  PORT_TsSlotDuration,  // 10000us
    // execution speed related
    maxTxDataPrepare          =  PORT_maxTxDataPrepare,
    maxRxAckPrepare           =  PORT_maxRxAckPrepare,
@@ -143,7 +153,7 @@ enum ieee154e_atomicdurations_enum {
    // radio watchdog
    wdRadioTx                 =   33,                  //  1000us (needs to be >delayTx)
    wdDataDuration            =  164,                  //  5000us (measured 4280us with max payload)
-   wdAckDuration             =   98,                  //  3000us (measured 1000us)
+   wdAckDuration             =   80,                  //  2400us (measured 1000us)
 };
 
 //shift of bytes in the linkOption bitmap
@@ -206,10 +216,19 @@ typedef struct {
    // channel hopping
    uint8_t                   freq;                    // frequency of the current slot
    uint8_t                   asnOffset;               // offset inside the frame
+   uint8_t                   singleChannel;           // the single channel used for transmission
+   uint8_t                   chTemplate[16];          // storing the template of hopping sequence
+   // template ID
+   uint8_t                   tsTemplateId;            // timeslot template id
+   uint8_t                   chTemplateId;            // channel hopping tempalte id
    
    PORT_RADIOTIMER_WIDTH     radioOnInit;             // when within the slot the radio turns on
    PORT_RADIOTIMER_WIDTH     radioOnTics;             // how many tics within the slot the radio is on
    bool                      radioOnThisSlot;         // to control if the radio has been turned on in a slot.
+   
+   //control
+   bool                      isAckEnabled;            // whether reply for ack, used for synchronization test
+   bool                      isSecurityEnabled;       // whether security is applied
 } ieee154e_vars_t;
 
 BEGIN_PACK
@@ -239,6 +258,11 @@ void               ieee154e_init(void);
 PORT_RADIOTIMER_WIDTH   ieee154e_asnDiff(asn_t* someASN);
 bool               ieee154e_isSynch(void);
 void               ieee154e_getAsn(uint8_t* array);
+void               ieee154e_setIsAckEnabled(bool isEnabled);
+void               ieee154e_setSingleChannel(uint8_t channel);
+void               ieee154e_setIsSecurityEnabled(bool isEnabled);
+
+
 // events
 void               ieee154e_startOfFrame(PORT_RADIOTIMER_WIDTH capturedTime);
 void               ieee154e_endOfFrame(PORT_RADIOTIMER_WIDTH capturedTime);

@@ -24,6 +24,13 @@ static const uint8_t infoStackName[] = "OpenWSN ";
 #define OPENWSN_VERSION_MINOR     9
 #define OPENWSN_VERSION_PATCH     0
 
+// golden image version and type
+#define GOLDEN_IMAGE_VERSION      1
+// define golden image type: only one can be used
+#define GOLDEN_IMAGE_ROOT         1 // dagroot
+//#define GOLDEN_IMAGE_SNIFFER        2 // sniffer
+
+
 //to delimit the implementation of draft-thubert-6man-flow-label-for-rpl-03
 #define FLOW_LABEL_RPL_DOMAIN 1
 
@@ -66,6 +73,7 @@ enum {
    IANA_IPv6HOPOPT                     = 0x00,
    IANA_TCP                            = 0x06,
    IANA_UDP                            = 0x11,
+   IANA_IPv6ROUTING                    = 0x03,
    IANA_IPv6ROUTE                      = 0x2b,//used for source routing
    IANA_ICMPv6                         = 0x3a,
    IANA_ICMPv6_ECHO_REQUEST            =  128,
@@ -238,7 +246,8 @@ enum {
    ERR_INVALIDPACKETFROMRADIO          = 0x37, // invalid packet frome radio, length {1} (code location {0})
    ERR_BUSY_RECEIVING                  = 0x38, // busy receiving when stop of serial activity, buffer input length {1} (code location {0})
    ERR_WRONG_CRC_INPUT                 = 0x39, // wrong CRC in input Buffer (input length {0})
-   ERR_SECURITY                        = 0x3a, // security error on frameType {0}, code location {1}
+   ERR_PACKET_SYNC                     = 0x3a, // synchronized when received a packet
+   ERR_SECURITY                        = 0x3b, // security error on frameType {0}, code location {1}
 };
 
 //=========================== typedef =========================================
@@ -302,6 +311,7 @@ typedef struct {
    uint8_t*      l2_ASNpayload;                  // pointer to the ASN in EB
    uint8_t       l2_joinPriority;                // the join priority received in EB
    bool          l2_IEListPresent;               //did have IE field?
+   bool          l2_payloadIEpresent;            // did I have payload IE field
    bool          l2_joinPriorityPresent;
    //layer-2 security
    uint8_t       l2_securityLevel;               //the security level specified for the current frame

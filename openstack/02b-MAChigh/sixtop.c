@@ -27,8 +27,7 @@ sixtop_vars_t sixtop_vars;
 // send internal
 owerror_t     sixtop_send_internal(
    OpenQueueEntry_t*    msg,
-   uint8_t              iePresent,
-   uint8_t              frameVersion
+   bool                 payloadIEPresent
 );
 
 // timer interrupt callbacks
@@ -124,6 +123,7 @@ void sixtop_init() {
    sixtop_vars.dsn                = 0;
    sixtop_vars.mgtTaskCounter     = 0;
    sixtop_vars.kaPeriod           = MAXKAPERIOD;
+   sixtop_vars.ebPeriod           = EBTIMEOUT;
    
    sixtop_vars.maintenanceTimerId = opentimers_start(
       sixtop_vars.periodMaintenance,
@@ -145,6 +145,14 @@ void sixtop_setKaPeriod(uint16_t kaPeriod) {
       sixtop_vars.kaPeriod = MAXKAPERIOD;
    } else {
       sixtop_vars.kaPeriod = kaPeriod;
+   } 
+}
+
+void sixtop_setEBPeriod(uint8_t ebPeriod) {
+   if(ebPeriod < SIXTOP_MINIMAL_EBPERIOD) {
+      sixtop_vars.ebPeriod = SIXTOP_MINIMAL_EBPERIOD;
+   } else {
+      sixtop_vars.ebPeriod = ebPeriod;
    } 
 }
 
@@ -234,7 +242,7 @@ void sixtop_addCells(open_addr_t* neighbor, uint16_t numCells){
    processIE_prependMLMEIE(pkt,len);
    
    // indicate IEs present
-   pkt->l2_IEListPresent = IEEE154_IELIST_YES;
+   pkt->l2_payloadIEpresent = TRUE;
    
    // send packet
    sixtop_send(pkt);
@@ -326,7 +334,7 @@ void sixtop_removeCell(open_addr_t* neighbor){
    processIE_prependMLMEIE(pkt,len);
  
    // indicate IEs present
-   pkt->l2_IEListPresent = IEEE154_IELIST_YES;
+   pkt->l2_payloadIEpresent = TRUE;
    
    // send packet
    sixtop_send(pkt);
@@ -417,7 +425,7 @@ void sixtop_removeCellByInfo(open_addr_t*  neighbor,cellInfo_ht* cellInfo){
    processIE_prependMLMEIE(pkt,len);
  
    // indicate IEs present
-   pkt->l2_IEListPresent = IEEE154_IELIST_YES;
+   pkt->l2_payloadIEpresent = TRUE;
    
    // send packet
    sixtop_send(pkt);
@@ -461,23 +469,21 @@ owerror_t sixtop_send(OpenQueueEntry_t *msg) {
    msg->owner        = COMPONENT_SIXTOP;
    msg->l2_frameType = IEEE154_TYPE_DATA;
 
-
    // set l2-security attributes
    msg->l2_securityLevel   = IEEE802154E_SECURITY_LEVEL;
    msg->l2_keyIdMode       = IEEE802154E_SECURITY_KEYIDMODE; 
    msg->l2_keyIndex        = IEEE802154E_SECURITY_KEY_INDEX;
 
-   if (msg->l2_IEListPresent == IEEE154_IELIST_NO) {
+   
+   if (msg->l2_payloadIEpresent == FALSE) {
       return sixtop_send_internal(
          msg,
-         IEEE154_IELIST_NO,
-         IEEE154_FRAMEVERSION_2006
+         FALSE
       );
    } else {
       return sixtop_send_internal(
          msg,
-         IEEE154_IELIST_YES,
-         IEEE154_FRAMEVERSION
+         TRUE
       );
    }
 }
@@ -579,8 +585,8 @@ void task_sixtopNotifReceive() {
    // process the header IEs
    lenIE=0;
    if(
-         msg->l2_frameType==IEEE154_TYPE_DATA            &&
-         msg->l2_IEListPresent==IEEE154_IELIST_YES       &&
+         msg->l2_frameType              == IEEE154_TYPE_DATA  &&
+         msg->l2_payloadIEpresent       == TRUE               &&
          sixtop_processIEs(msg, &lenIE) == FALSE
       ) {
       // free the packet's RAM memory
@@ -692,8 +698,7 @@ IEEE802154E will handle the packet.
 */
 owerror_t sixtop_send_internal(
    OpenQueueEntry_t* msg, 
-   uint8_t iePresent, 
-   uint8_t frameVersion) {
+   bool    payloadIEPresent) {
 
    // assign a number of retries
    if (
@@ -715,8 +720,7 @@ owerror_t sixtop_send_internal(
    // add a IEEE802.15.4 header
    ieee802154_prependHeader(msg,
                             msg->l2_frameType,
-                            iePresent,
-                            frameVersion,
+                            payloadIEPresent,
                             msg->l2_securityLevel == ASH_SLF_TYPE_NOSEC ? 0 : 1, // security enabled
                             msg->l2_dsn,
                             &(msg->l2_nextORpreviousHop)
@@ -748,7 +752,7 @@ The body of this function executes one of the MAC management task.
 */
 void timer_sixtop_management_fired(void) {
    scheduleEntry_t* entry;
-   sixtop_vars.mgtTaskCounter = (sixtop_vars.mgtTaskCounter+1)%EBTIMEOUT;
+   sixtop_vars.mgtTaskCounter = (sixtop_vars.mgtTaskCounter+1)%sixtop_vars.ebPeriod;
    
    switch (sixtop_vars.mgtTaskCounter) {
       case 0:
@@ -827,6 +831,8 @@ port_INLINE void sixtop_sendEB() {
    // reserve space for EB-specific header
    // reserving for IEs.
    len += processIE_prependSlotframeLinkIE(eb);
+   len += processIE_prependChannelHoppingIE(eb);
+   len += processIE_prependTSCHTimeslotIE(eb);
    len += processIE_prependSyncIE(eb);
    
    //add IE header 
@@ -839,15 +845,14 @@ port_INLINE void sixtop_sendEB() {
    eb->l2_nextORpreviousHop.addr_16b[1] = 0xff;
    
    //I has an IE in my payload
-   eb->l2_IEListPresent = IEEE154_IELIST_YES;
+   eb->l2_payloadIEpresent = TRUE;
 
    // set l2-security attributes
    eb->l2_securityLevel   = IEEE802154E_SECURITY_LEVEL_BEACON;
    eb->l2_keyIdMode       = IEEE802154E_SECURITY_KEYIDMODE;
    eb->l2_keyIndex        = IEEE802154E_SECURITY_KEY_INDEX;
-
    // put in queue for MAC to handle
-   sixtop_send_internal(eb,IEEE154_IELIST_YES,IEEE154_FRAMEVERSION);
+   sixtop_send_internal(eb,eb->l2_payloadIEpresent);
    
    // I'm now busy sending an EB
    sixtop_vars.busySendingEB = TRUE;
@@ -913,7 +918,7 @@ port_INLINE void sixtop_sendKA() {
    kaPkt->l2_keyIndex        = IEEE802154E_SECURITY_KEY_INDEX;
 
    // put in queue for MAC to handle
-   sixtop_send_internal(kaPkt,IEEE154_IELIST_NO,IEEE154_FRAMEVERSION_2006);
+   sixtop_send_internal(kaPkt,FALSE);
    
    // I'm now busy sending a KA
    sixtop_vars.busySendingKA = TRUE;
@@ -1047,7 +1052,7 @@ port_INLINE bool sixtop_processIEs(OpenQueueEntry_t* pkt, uint16_t * lenIE) {
    //candidate IE header  if type ==0 header IE if type==1 payload IE
    temp_8b = *((uint8_t*)(pkt->payload)+ptr);
    ptr++;
-   temp_16b = temp_8b + ((*((uint8_t*)(pkt->payload)+ptr))<< 8);
+   temp_16b = (temp_8b<<8) + (*((uint8_t*)(pkt->payload)+ptr));
    ptr++;
    *lenIE = ptr;
    if(
@@ -1080,7 +1085,7 @@ port_INLINE bool sixtop_processIEs(OpenQueueEntry_t* pkt, uint16_t * lenIE) {
            //read sub IE header
            temp_8b = *((uint8_t*)(pkt->payload)+ptr);
            ptr = ptr + 1;
-           temp_16b = temp_8b  +(*((uint8_t*)(pkt->payload)+ptr) << 8);
+           temp_16b = (temp_8b << 8) + (*((uint8_t*)(pkt->payload)+ptr));
            ptr = ptr + 1;
            len = len - 2; //remove header fields len
            if(
@@ -1286,7 +1291,7 @@ void sixtop_linkResponse(
    processIE_prependMLMEIE(sixtopPkt,len);
     
    //I has an IE in my payload
-   sixtopPkt->l2_IEListPresent = IEEE154_IELIST_YES;
+   sixtopPkt->l2_payloadIEpresent = TRUE;
   
    sixtop_send(sixtopPkt);
   

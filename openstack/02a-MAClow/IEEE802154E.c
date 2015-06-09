@@ -72,6 +72,10 @@ void     incrementAsnOffset(void);
 void     ieee154e_syncSlotOffset(void);
 void     asnStoreFromEB(uint8_t* asn);
 void     joinPriorityStoreFromEB(uint8_t jp);
+// timeslot template handling
+void     timeslotTemplateIDStoreFromEB(uint8_t id);
+// channelhopping template handling
+void     channelhoppingTemplateIDStoreFromEB(uint8_t id);
 // synchronization
 void     synchronizePacket(PORT_RADIOTIMER_WIDTH timeReceived);
 void     synchronizeAck(PORT_SIGNED_INT_WIDTH timeCorrection);
@@ -105,6 +109,16 @@ void ieee154e_init() {
    // initialize variables
    memset(&ieee154e_vars,0,sizeof(ieee154e_vars_t));
    memset(&ieee154e_dbg,0,sizeof(ieee154e_dbg_t));
+   
+   ieee154e_vars.singleChannel     = SYNCHRONIZING_CHANNEL;
+   ieee154e_vars.isAckEnabled      = TRUE;
+   ieee154e_vars.isSecurityEnabled = FALSE;
+   // default hopping template
+   memcpy(
+       &(ieee154e_vars.chTemplate[0]),
+       chTemplate_default,
+       sizeof(ieee154e_vars.chTemplate)
+   );
    
    if (idmanager_getIsDAGroot()==TRUE) {
       changeIsSync(TRUE);
@@ -645,7 +659,7 @@ port_INLINE bool ieee154e_processIEs(OpenQueueEntry_t* pkt, uint16_t* lenIE) {
    temp_8b    = *((uint8_t*)(pkt->payload)+ptr);
    ptr++;
    
-   temp_16b   = temp_8b + ((*((uint8_t*)(pkt->payload)+ptr))<< 8);
+   temp_16b   = (temp_8b << 8) + (*((uint8_t*)(pkt->payload)+ptr));
    ptr++;
    
    *lenIE     = ptr;
@@ -676,7 +690,7 @@ port_INLINE bool ieee154e_processIEs(OpenQueueEntry_t* pkt, uint16_t* lenIE) {
             //read sub IE header
             temp_8b     = *((uint8_t*)(pkt->payload)+ptr);
             ptr         = ptr + 1;
-            temp_16b    = temp_8b  +(*((uint8_t*)(pkt->payload)+ptr) << 8);
+            temp_16b    = (temp_8b << 8)  + (*((uint8_t*)(pkt->payload)+ptr));
             ptr         = ptr + 1;
             
             len         = len - 2; //remove header fields len
@@ -718,9 +732,20 @@ port_INLINE bool ieee154e_processIEs(OpenQueueEntry_t* pkt, uint16_t* lenIE) {
                   break;
                
                case IEEE802154E_MLME_TIMESLOT_IE_SUBID:
-                  //TODO
+                  if (idmanager_getIsDAGroot()==FALSE) {
+                      // timelsot template ID
+                      timeslotTemplateIDStoreFromEB(*((uint8_t*)(pkt->payload)+ptr));
+                      ptr = ptr + 1;
+                  }
                   break;
-               
+                  
+              case IEEE802154E_MLME_CHANNELHOPPING_IE_SUBID:
+                  if (idmanager_getIsDAGroot()==FALSE) {
+                      // timelsot template ID
+                      channelhoppingTemplateIDStoreFromEB(*((uint8_t*)(pkt->payload)+ptr));
+                      ptr = ptr + 1;
+                  }
+                  break;
                default:
                   return FALSE;
                   break;
@@ -1497,7 +1522,7 @@ port_INLINE void activity_ri5(PORT_RADIOTIMER_WIDTH capturedTime) {
       }
       
       // check if ack requested
-      if (ieee802514_header.ackRequested==1) {
+      if (ieee802514_header.ackRequested==1 && ieee154e_vars.isAckEnabled == TRUE) {
          // arm rt5
          radiotimer_schedule(DURATION_rt5);
       } else {
@@ -1588,8 +1613,7 @@ port_INLINE void activity_ri6() {
 
    ieee802154_prependHeader(ieee154e_vars.ackToSend,
                             ieee154e_vars.ackToSend->l2_frameType,
-                            IEEE154_IELIST_YES,//ie in ack
-                            IEEE154_FRAMEVERSION,//enhanced ack
+                            TRUE,//ie in ack
                             ieee154e_vars.ackToSend->l2_securityLevel == ASH_SLF_TYPE_NOSEC ? 0 : 1,
                             ieee154e_vars.dataReceived->l2_dsn,
                             &(ieee154e_vars.dataReceived->l2_nextORpreviousHop)
@@ -1842,6 +1866,34 @@ port_INLINE void ieee154e_syncSlotOffset() {
    ieee154e_vars.slotOffset       = (slotOffset_t) slotOffset;
 }
 
+void ieee154e_setIsAckEnabled(bool isEnabled){
+    ieee154e_vars.isAckEnabled = isEnabled;
+}
+
+void ieee154e_setSingleChannel(uint8_t channel){
+    if (
+        (channel < 11 || channel > 26) &&
+         channel != 0   // channel == 0 means channel hopping is enabled
+    ) {
+        // log wrong channel, should be  : (0, or 11~26)
+        return;
+    }
+    ieee154e_vars.singleChannel = channel;
+}
+
+void ieee154e_setIsSecurityEnabled(bool isEnabled){
+    ieee154e_vars.isSecurityEnabled = isEnabled;
+}
+
+// timeslot template handling
+port_INLINE void timeslotTemplateIDStoreFromEB(uint8_t id){
+    ieee154e_vars.tsTemplateId = id;
+}
+
+// channelhopping template handling
+port_INLINE void channelhoppingTemplateIDStoreFromEB(uint8_t id){
+    ieee154e_vars.chTemplateId = id;
+}
 //======= synchronization
 
 void synchronizePacket(PORT_RADIOTIMER_WIDTH timeReceived) {
@@ -1877,17 +1929,20 @@ void synchronizePacket(PORT_RADIOTIMER_WIDTH timeReceived) {
    ieee154e_vars.deSyncTimeout    = DESYNCTIMEOUT;
    
    // log a large timeCorrection
-   if (
-         ieee154e_vars.isSync==TRUE &&
-         (
-            timeCorrection<-LIMITLARGETIMECORRECTION ||
-            timeCorrection> LIMITLARGETIMECORRECTION
-         )
-      ) {
-      openserial_printError(COMPONENT_IEEE802154E,ERR_LARGE_TIMECORRECTION,
-                            (errorparameter_t)timeCorrection,
-                            (errorparameter_t)0);
-   }
+//   if (
+//         ieee154e_vars.isSync==TRUE &&
+//         (
+//            timeCorrection<-LIMITLARGETIMECORRECTION ||
+//            timeCorrection> LIMITLARGETIMECORRECTION
+//         )
+//      ) {
+//      openserial_printError(COMPONENT_IEEE802154E,ERR_LARGE_TIMECORRECTION,
+//                            (errorparameter_t)timeCorrection,
+//                            (errorparameter_t)0);
+//   }
+   openserial_printInfo(COMPONENT_IEEE802154E,ERR_PACKET_SYNC,
+                      (errorparameter_t)ieee154e_vars.asn.bytes0and1,
+                      (errorparameter_t)timeCorrection);
    
    // update the stats
    ieee154e_stats.numSyncPkt++;
@@ -1917,17 +1972,20 @@ void synchronizeAck(PORT_SIGNED_INT_WIDTH timeCorrection) {
    adaptive_sync_indicateTimeCorrection((-timeCorrection),ieee154e_vars.ackReceived->l2_nextORpreviousHop);
    
    // log a large timeCorrection
-   if (
-         ieee154e_vars.isSync==TRUE &&
-         (
-            timeCorrection<-LIMITLARGETIMECORRECTION ||
-            timeCorrection> LIMITLARGETIMECORRECTION
-         )
-      ) {
-      openserial_printError(COMPONENT_IEEE802154E,ERR_LARGE_TIMECORRECTION,
-                            (errorparameter_t)timeCorrection,
-                            (errorparameter_t)1);
-   }
+//   if (
+//         ieee154e_vars.isSync==TRUE &&
+//         (
+//            timeCorrection<-LIMITLARGETIMECORRECTION ||
+//            timeCorrection> LIMITLARGETIMECORRECTION
+//         )
+//      ) {
+//      openserial_printError(COMPONENT_IEEE802154E,ERR_LARGE_TIMECORRECTION,
+//                            (errorparameter_t)timeCorrection,
+//                            (errorparameter_t)1);
+//   }
+   openserial_printInfo(COMPONENT_IEEE802154E,ERR_PACKET_SYNC,
+                   (errorparameter_t)ieee154e_vars.asn.bytes0and1,
+                   (errorparameter_t)timeCorrection);
    // update the stats
    ieee154e_stats.numSyncAck++;
    updateStats(timeCorrection);
@@ -2026,7 +2084,12 @@ different channel offsets in the same slot.
 */
 port_INLINE uint8_t calculateFrequency(uint8_t channelOffset) {
    // comment the following line out to disable channel hopping
-   return SYNCHRONIZING_CHANNEL; // single channel
+    if (ieee154e_vars.singleChannel >= 11 && ieee154e_vars.singleChannel <= 26 ) {
+        return ieee154e_vars.singleChannel; // single channel
+    } else {
+        // channel hopping enabled, use the channel depending on hopping template
+        return 11 + ieee154e_vars.chTemplate[(ieee154e_vars.asnOffset+channelOffset)%16];
+    }
    //return 11+(ieee154e_vars.asnOffset+channelOffset)%16; //channel hopping
 }
 
