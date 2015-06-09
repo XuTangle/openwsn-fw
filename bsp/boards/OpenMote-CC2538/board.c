@@ -26,6 +26,7 @@
 #include "flash.h"
 #include "i2c.h"
 #include "sensors.h"
+#include "crypto_engine.h"
 
 //=========================== variables =======================================
 
@@ -88,6 +89,7 @@ void board_init(void) {
    radio_init();
    i2c_init();
    sensors_init();
+   crypto_engine_init();
 }
 
 /**

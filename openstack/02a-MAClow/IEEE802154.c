@@ -80,7 +80,7 @@ void ieee802154_prependHeader(OpenQueueEntry_t* msg,
    
    //if security is enabled, the Auxiliary Security Header need to be added to the IEEE802.15.4 MAC header
    if(securityEnabled == TRUE){
-      IEEE802154security_prependAuxiliarySecurityHeader(msg);
+      IEEE802154_security_prependAuxiliarySecurityHeader(msg);
    }
    
    // previousHop address (always 64-bit)
@@ -287,7 +287,7 @@ void ieee802154_retrieveHeader(OpenQueueEntry_t*      msg,
 
    //if security is enabled, Auxiliary Security Header can be retrieved
    if(ieee802514_header->securityEnabled == TRUE){
-      IEEE802154security_retrieveAuxiliarySecurityHeader(msg,ieee802514_header);
+      IEEE802154_security_retrieveAuxiliarySecurityHeader(msg,ieee802514_header);
    }
    
    // remove termination IE accordingly 

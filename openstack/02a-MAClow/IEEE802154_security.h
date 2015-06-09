@@ -5,10 +5,11 @@
 \author Giuseppe Piro <giuseppe.piro@poliba.it>,
 \author Gennaro Boggia <gennaro.boggia@poliba.it>,
 \author Luigi Alfredo Grieco <alfredo.grieco@poliba.it>
+\author Tengfei Chang <tengfei.chang@eecs.berkeley.edu>, June 2015.
 */
 
-#ifndef __SECURITY_H
-#define __SECURITY_H
+#ifndef __IEEE802154_SECURITY_H
+#define __IEEE802154_SECURITY_H
 
 /**
 \addtogroup helpers
@@ -17,28 +18,25 @@
 \{
 */
 
-#include "IEEE802154.h"
-#include "IEEE802154E.h"
-#include "neighbors.h"
-#include "idmanager.h"
-#include "openserial.h"
 #include "opendefs.h"
 #include "packetfunctions.h"
-#include "crypto_engine.h"
+#include "neighbors.h"
 
 //=========================== define ==========================================
 
+#define L2_SECURITY_ACTIVE
+
 #ifdef L2_SECURITY_ACTIVE
 // TODO use parameters passed by SCons
-#define IEEE802154E_SECURITY_LEVEL           ASH_SLF_TYPE_CRYPTO_MIC32
-#define IEEE802154E_SECURITY_LEVEL_BEACON    ASH_SLF_TYPE_MIC_32
-#define IEEE802154E_SECURITY_KEYIDMODE       ASH_KEYIDMODE_DEFAULTKEYSOURCE
-#define IEEE802154E_SECURITY_KEY_INDEX       1
+    #define IEEE802154E_SECURITY_LEVEL           ASH_SLF_TYPE_CRYPTO_MIC32
+    #define IEEE802154E_SECURITY_LEVEL_BEACON    ASH_SLF_TYPE_MIC_32
+    #define IEEE802154E_SECURITY_KEYIDMODE       ASH_KEYIDMODE_DEFAULTKEYSOURCE
+    #define IEEE802154E_SECURITY_KEY_INDEX       1
 #else
-#define IEEE802154E_SECURITY_LEVEL           ASH_SLF_TYPE_NOSEC
-#define IEEE802154E_SECURITY_LEVEL_BEACON    ASH_SLF_TYPE_NOSEC 
-#define IEEE802154E_SECURITY_KEYIDMODE       0
-#define IEEE802154E_SECURITY_KEY_INDEX       0
+    #define IEEE802154E_SECURITY_LEVEL           ASH_SLF_TYPE_NOSEC
+    #define IEEE802154E_SECURITY_LEVEL_BEACON    ASH_SLF_TYPE_NOSEC 
+    #define IEEE802154E_SECURITY_KEYIDMODE       0
+    #define IEEE802154E_SECURITY_KEY_INDEX       0
 #endif // L2_SECURITY_ACTIVE
 
 #define MAXNUMKEYS           MAXNUMNEIGHBORS+1
@@ -130,19 +128,20 @@ typedef struct{
    m_macDeviceTable        MacDeviceTable;
    m_macSecurityLevelTable MacSecurityLevelTable;
    uint8_t                 M_k[16];
-}security_vars_t;
+}ieee802154_security_vars_t;
 
 //=========================== prototypes ======================================
 
 //admin
-void IEEE802154security_init(void);
+void      IEEE802154_security_init(void);
 //public
-void IEEE802154security_prependAuxiliarySecurityHeader(OpenQueueEntry_t* msg);
-owerror_t IEEE802154security_outgoingFrameSecurity(OpenQueueEntry_t* msg);
-void IEEE802154security_retrieveAuxiliarySecurityHeader(OpenQueueEntry_t*      msg,
-                                                        ieee802154_header_iht* tempheader);
-
-owerror_t IEEE802154security_incomingFrame(OpenQueueEntry_t* msg);
+void      IEEE802154_security_prependAuxiliarySecurityHeader(OpenQueueEntry_t* msg);
+owerror_t IEEE802154_security_outgoingFrameSecurity(OpenQueueEntry_t* msg);
+void      IEEE802154_security_retrieveAuxiliarySecurityHeader(
+                            OpenQueueEntry_t*      msg,
+                            ieee802154_header_iht* tempheader
+);
+owerror_t IEEE802154_security_incomingFrame(OpenQueueEntry_t* msg);
 
 /**
 \}

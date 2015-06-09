@@ -2,11 +2,12 @@
 \brief Crypto engine implementation for OpenMote-CC2538
   
 \author Malisa Vucinic <malishav@gmail.com>, March 2015.
+\author Tengfei Chang <tengfei.chang@eece.berkeley.edu>, June 2015.
 */
 #include <stdint.h>
 #include <headers/hw_sys_ctrl.h>
 #include "sys_ctrl.h"
-#include "cc2538_crypto_engine.h"
+#include "crypto_engine.h"
 #include "aes_ctr.h"
 #include "aes_cbc.h"
 #include "aes.h"  // CC2538 specific headers
@@ -17,38 +18,26 @@
 \brief On success, returns by reference the location in key RAM where the 
    new/existing key is stored.
 */
-static owerror_t load_key(uint8_t key[16], uint8_t* /* out */ key_location) {
-   static uint8_t loaded_key[16];
-   
-   if(memcmp(loaded_key, key, 16) != 0) {
-      memcpy(loaded_key, key, 16);
-      // Load the key in key RAM
-      if(AESLoadKey(loaded_key, DEFAULT_KEY_AREA) != AES_SUCCESS) {
-         return E_FAIL;
-      }
-   }
-   *key_location = DEFAULT_KEY_AREA;
-   return E_SUCCESS;
-}
 
-static owerror_t init(void) {
-   //
+//============================ private ========================================
+owerror_t load_key(uint8_t key[16], uint8_t* key_location);
+
+// =========================== prototype ======================================
+owerror_t crypto_engine_init(void) {
    // Enable AES peripheral
-   //
    SysCtrlPeripheralReset(SYS_CTRL_PERIPH_AES);
    SysCtrlPeripheralEnable(SYS_CTRL_PERIPH_AES);
    return E_SUCCESS;
 }
 
-static owerror_t aes_ccms_enc_cc2538(uint8_t* a,
-         uint8_t len_a,
-         uint8_t* m,
-         uint8_t* len_m,
-         uint8_t* nonce,
-         uint8_t l,
-         uint8_t key[16],
-         uint8_t len_mac) {
-
+owerror_t crypto_engine_aes_ccms_enc(uint8_t* a, uint8_t len_a, 
+                                          uint8_t* m,
+                                          uint8_t* len_m,
+                                          uint8_t* nonce,
+                                          uint8_t l,
+                                          uint8_t key[16],
+                                          uint8_t len_mac
+) {
    bool encrypt;
    uint8_t key_location;
   
@@ -84,15 +73,14 @@ static owerror_t aes_ccms_enc_cc2538(uint8_t* a,
    return E_FAIL;
 }
 
-static owerror_t aes_ccms_dec_cc2538(uint8_t* a,
-         uint8_t len_a,
-         uint8_t* m,
-         uint8_t* len_m,
-         uint8_t* nonce,
-         uint8_t l,
-         uint8_t key[16],
-         uint8_t len_mac) {
-
+owerror_t crypto_engine_aes_ccms_dec(uint8_t* a, uint8_t len_a,
+                                          uint8_t* m,
+                                          uint8_t* len_m,
+                                          uint8_t* nonce,
+                                          uint8_t l,
+                                          uint8_t key[16],
+                                          uint8_t len_mac
+) {
    bool decrypt;
    uint8_t key_location;
    uint8_t tag[CBC_MAX_MAC_SIZE];
@@ -129,7 +117,7 @@ static owerror_t aes_ccms_dec_cc2538(uint8_t* a,
    return E_FAIL;
 }
 
-static owerror_t aes_ecb_enc_cc2538(uint8_t* buffer, uint8_t* key) {
+owerror_t crypto_engine_aes_ecb_enc(uint8_t* buffer, uint8_t* key) {
    uint8_t key_location;
    if(load_key(key, &key_location) == E_SUCCESS) {
       // Polling
@@ -145,14 +133,19 @@ static owerror_t aes_ecb_enc_cc2538(uint8_t* buffer, uint8_t* key) {
    }
    return E_FAIL;
 }
-/*---------------------------------------------------------------------------*/
-const struct crypto_engine board_crypto_engine = {
-   aes_ccms_enc_cc2538,
-   aes_ccms_dec_cc2538,
-   aes_cbc_enc_raw,
-   aes_ctr_enc_raw,
-   aes_ecb_enc_cc2538,      // AES stand-alone encryption
-   init,
-};
-/*---------------------------------------------------------------------------*/
+
+//================================ private =====================================
+owerror_t load_key(uint8_t key[16], uint8_t* /* out */ key_location) {
+   uint8_t loaded_key[16];
+   
+   if(memcmp(loaded_key, key, 16) != 0) {
+      memcpy(loaded_key, key, 16);
+      // Load the key in key RAM
+      if(AESLoadKey(loaded_key, DEFAULT_KEY_AREA) != AES_SUCCESS) {
+         return E_FAIL;
+      }
+   }
+   *key_location = DEFAULT_KEY_AREA;
+   return E_SUCCESS;
+}
 
