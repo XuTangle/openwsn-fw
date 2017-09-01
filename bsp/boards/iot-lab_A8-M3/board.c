@@ -15,6 +15,7 @@
 #include "rcc.h"
 #include "nvic.h"
 #include "debugpins.h"
+#include "i2c.h"
 
 //=========================== variable ========================================
 
@@ -96,6 +97,7 @@ void board_init(void){
     debugpins_init();
     //enable nvic for the radio
     NVIC_radio();
+    i2c_init();
 }
 
 void board_sleep() {

@@ -17,6 +17,9 @@
 #include "debugpins.h"
 #include "opentimers.h"
 #include "gpio.h"
+#include "i2c.h"
+#include "lsm303dlhc_driver.h"
+#include "stm32f10x_i2c.h"
 
 //=========================== main ============================================
 
@@ -91,6 +94,13 @@ void board_init(void)
     debugpins_init();
     //enable nvic for the radio
     NVIC_radio();
+    
+    i2c_init();
+    // initial i2c lsm303 dlhc
+    SetODR(ODR_25Hz);                       //set ODR_ACCELEROMETER (turn ON device)
+    // SetMode(NORMAL);                        //set PowerMode 
+    // SetFullScale(FULLSCALE_2);              //FULLSCALE_2: 0x00 set Fullscale +/-2g
+    // SetAxis(X_ENABLE | Y_ENABLE | Z_ENABLE);//set axis Enable
 }
 
 void board_sleep(){
