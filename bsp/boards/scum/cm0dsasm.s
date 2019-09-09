@@ -61,7 +61,7 @@ Reset_Handler   PROC
         ENTRY
         
         LDR     R1, =0xE000E100         ;Interrupt Set Enable Register
-        LDR     R0, =0xFF               ;<- REMEMBER TO ENABLE THE INTERRUPTS!!
+        LDR     R0, =0xC1               ;<- REMEMBER TO ENABLE THE INTERRUPTS!!
         STR     R0, [R1]
         
         IMPORT  __main
@@ -108,7 +108,7 @@ RF_Handler      PROC
                     
 RFTIMER_Handler PROC
         EXPORT      RFTIMER_Handler
-        IMPORT      radiotimer_isr
+        IMPORT      sctimer_isr
         
         PUSH        {R0,LR}
         
@@ -116,7 +116,7 @@ RFTIMER_Handler PROC
         MSR         PRIMASK, R0 ; 
         ;STR        R0,[R1]
         
-        BL          radiotimer_isr
+        BL          sctimer_isr
         
         MOVS        R0, #0          ;ENABLE all interrupts
         MSR         PRIMASK, R0

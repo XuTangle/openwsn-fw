@@ -20,7 +20,7 @@
 #include "iphc_obj.h"
 #include "neighbors_obj.h"
 #include "sixtop_obj.h"
-#include "sf0_obj.h"
+#include "msf_obj.h"
 #include "schedule_obj.h"
 #include "icmpv6echo_obj.h"
 #include "icmpv6rpl_obj.h"
@@ -152,14 +152,15 @@ enum {
    MOTE_NOTIF_uart_writeCircularBuffer_FASTSIM,
    MOTE_NOTIF_uart_writeBufferByLen_FASTSIM,
    MOTE_NOTIF_uart_readByte,
+   MOTE_NOTIF_uart_setCTS,
    // last
    MOTE_NOTIF_LAST
 };
 
 //=========================== typedef =========================================
 
-typedef void (*uart_tx_cbt)(OpenMote* self);
-typedef void (*uart_rx_cbt)(OpenMote* self);
+typedef void    (*uart_tx_cbt)(OpenMote* self);
+typedef uint8_t (*uart_rx_cbt)(OpenMote* self);
 
 typedef struct {
    uart_tx_cbt     txCb;
@@ -204,7 +205,7 @@ struct OpenMote {
    sixtop_vars_t        sixtop_vars;
    neighbors_vars_t     neighbors_vars;
    schedule_vars_t      schedule_vars;
-   sf0_vars_t           sf0_vars;
+   msf_vars_t           msf_vars;
    // l2a
    adaptive_sync_vars_t adaptive_sync_vars;
    ieee802154_security_vars_t ieee802154_security_vars;

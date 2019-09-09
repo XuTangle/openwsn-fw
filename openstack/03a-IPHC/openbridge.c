@@ -9,17 +9,18 @@
 //=========================== variables =======================================
 
 //=========================== prototypes ======================================
+
 //=========================== public ==========================================
 
-void openbridge_init() {
+void openbridge_init(void) {
 }
 
-void openbridge_triggerData() {
+void openbridge_triggerData(void) {
    uint8_t           input_buffer[136];//worst case: 8B of next hop + 128B of data
    OpenQueueEntry_t* pkt;
    uint8_t           numDataBytes;
   
-   numDataBytes = openserial_getInputBufferFilllevel();
+   numDataBytes = openserial_getInputBufferFillLevel();
   
    //poipoi xv
    //this is a temporal workaround as we are never supposed to get chunks of data

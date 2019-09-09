@@ -38,17 +38,17 @@ static const uint8_t ebIEsBytestream[] = {
 #define EB_IE_LEN                   28
 
 #define NUM_CHANNELS                16 // number of channels to channel hop on
-#define SYNCHRONIZING_CHANNEL       26 // channel the mote listens on to synchronize (physical channel)
-#define TXRETRIES                    3 // number of MAC retries before declaring failed
+#define TXRETRIES                   15 // number of MAC retries before declaring failed
 #define TX_POWER                    31 // 1=-25dBm, 31=0dBm (max value)
 #define RESYNCHRONIZATIONGUARD       5 // in 32kHz ticks. min distance to the end of the slot to successfully synchronize
 #define US_PER_TICK                 30 // number of us per 32kHz clock tick
-#define EBPERIOD                     2 // in seconds: 2 -> EB every 2 seconds
-#define MAXKAPERIOD               2000 // in slots: @15ms per slot -> ~30 seconds. Max value used by adaptive synchronization.
-#define DESYNCTIMEOUT             2333 // in slots: @15ms per slot -> ~35 seconds. A larger DESYNCTIMEOUT is needed if using a larger KATIMEOUT.
+#define EB_PORTION                  10 // set EB on minimal cell for 1/EB_PORTION portion
+#define MAXKAPERIOD               1000 // in slots: 1500@20ms per slot -> ~30 seconds. Max value used by adaptive synchronization.
+#define DESYNCTIMEOUT             1750 // in slots: 1750@20ms per slot -> ~35 seconds. A larger DESYNCTIMEOUT is needed if using a larger KATIMEOUT.
 #define LIMITLARGETIMECORRECTION     5 // threshold number of ticks to declare a timeCorrection "large"
-#define LENGTH_IEEE154_MAX         128 // max length of a valid radio packet  
+#define LENGTH_IEEE154_MAX         128 // max length of a valid radio packet
 #define DUTY_CYCLE_WINDOW_LIMIT    (0xFFFFFFFF>>1) // limit of the dutycycle window
+#define SERIALINHIBITGUARD          32 // 32@32kHz ~ 1ms
 
 //15.4e information elements related
 #define IEEE802154E_PAYLOAD_DESC_LEN_SHIFT                 0x04
@@ -159,15 +159,16 @@ typedef enum {
 //    - duration_in_seconds = ticks / 32768
 enum ieee154e_atomicdurations_enum {
    // time-slot related
-#ifdef SLOTDURATION_10MS
+#if SLOTDURATION==10
    TsTxOffset                =   70,                  //  2120us
    TsLongGT                  =   36,                  //  1100us
    TsTxAckDelay              =   33,                  //  1000us
-   TsShortGT                 =    9,                  //   500us, The standardlized value for this is 400/2=200us(7ticks). Currectly 7 doesn't work for short packet, change it back to 7 when found the problem.
-#else
-   TsTxOffset                =  131,                  //  4000us
+   TsShortGT                 =   13,                  //   500us, The standardlized value for this is 400/2=200us(7ticks). Currectly 7 doesn't work for short packet, change it back to 7 when found the problem.
+#endif
+#if SLOTDURATION==20
+   TsTxOffset                =  171,                  //  5215us
    TsLongGT                  =   43,                  //  1300us
-   TsTxAckDelay              =  151,                  //  4606us
+   TsTxAckDelay              =  181,                  //  5521us
    TsShortGT                 =   16,                  //   500us
 #endif
    TsSlotDuration            =  PORT_TsSlotDuration,  // 10000us
@@ -180,13 +181,9 @@ enum ieee154e_atomicdurations_enum {
    delayTx                   =  PORT_delayTx,         // between GO signal and SFD
    delayRx                   =  PORT_delayRx,         // between GO signal and start listening
    // radio watchdog
-   wdRadioTx                 =   33,                  //  1000us (needs to be >delayTx)
+   wdRadioTx                 =   45,                  //  1000us (needs to be >delayTx) (SCuM need a larger value, 45 is tested and works)
    wdDataDuration            =  164,                  //  5000us (measured 4280us with max payload)
-#ifdef SLOTDURATION_10MS
-   wdAckDuration             =   80,                  //  2400us (measured 1000us)
-#else
    wdAckDuration             =   98,                  //  3000us (measured 1000us)
-#endif
 };
 
 //shift of bytes in the linkOption bitmap: draft-ietf-6tisch-minimal-10.txt: page 6
@@ -194,7 +191,7 @@ enum ieee154e_linkOption_enum {
    FLAG_TX_S                 = 0,
    FLAG_RX_S                 = 1,
    FLAG_SHARED_S             = 2,
-   FLAG_TIMEKEEPING_S        = 3,   
+   FLAG_TIMEKEEPING_S        = 3,
 };
 
 // FSM timer durations (combinations of atomic durations)
@@ -216,6 +213,8 @@ enum ieee154e_linkOption_enum {
 #define DURATION_rt6 ieee154e_vars.lastCapturedTime+TsTxAckDelay-delayTx
 #define DURATION_rt7 ieee154e_vars.lastCapturedTime+TsTxAckDelay-delayTx+wdRadioTx
 #define DURATION_rt8 ieee154e_vars.lastCapturedTime+wdAckDuration
+// serialInhibit
+#define DURATION_si  ieee154e_vars.slotDuration-SERIALINHIBITGUARD
 
 //=========================== typedef =========================================
 
@@ -227,45 +226,49 @@ typedef struct {
 //=========================== module variables ================================
 
 typedef struct {
-   // misc
-   asn_t                     asn;                     // current absolute slot number
-   slotOffset_t              slotOffset;              // current slot offset
-   slotOffset_t              nextActiveSlotOffset;    // next active slot offset
-   PORT_TIMER_WIDTH          deSyncTimeout;           // how many slots left before looses sync
-   bool                      isSync;                  // TRUE iff mote is synchronized to network
-   OpenQueueEntry_t          localCopyForTransmission;// copy of the frame used for current TX
-   PORT_TIMER_WIDTH          numOfSleepSlots;         // number of slots to sleep between active slots
-   // as shown on the chronogram
-   ieee154e_state_t          state;                   // state of the FSM
-   OpenQueueEntry_t*         dataToSend;              // pointer to the data to send
-   OpenQueueEntry_t*         dataReceived;            // pointer to the data received
-   OpenQueueEntry_t*         ackToSend;               // pointer to the ack to send
-   OpenQueueEntry_t*         ackReceived;             // pointer to the ack received
-   PORT_TIMER_WIDTH          lastCapturedTime;        // last captured time
-   PORT_TIMER_WIDTH          syncCapturedTime;        // captured time used to sync
-   // channel hopping
-   uint8_t                   freq;                    // frequency of the current slot
-   uint8_t                   asnOffset;               // offset inside the frame
-   uint8_t                   singleChannel;           // the single channel used for transmission
-   bool                      singleChannelChanged;    // detect id singleChannelChanged
-   uint8_t                   chTemplate[NUM_CHANNELS];// storing the template of hopping sequence
-   // template ID
-   uint8_t                   tsTemplateId;            // timeslot template id
-   uint8_t                   chTemplateId;            // channel hopping tempalte id
-   
-   PORT_TIMER_WIDTH          radioOnInit;             // when within the slot the radio turns on
-   PORT_TIMER_WIDTH          radioOnTics;             // how many tics within the slot the radio is on
-   bool                      radioOnThisSlot;         // to control if the radio has been turned on in a slot.
-   
-   //control
-   bool                      isAckEnabled;            // whether reply for ack, used for synchronization test
-   bool                      isSecurityEnabled;       // whether security is applied
-   // time correction
-   int16_t                   timeCorrection;          // store the timeCorrection, prepend and retrieve it inside of frame header
-   
-   uint16_t                  slotDuration;            // duration of slot
-   opentimers_id_t           timerId;                 // id of timer used for implementing TSCH slot FSM 
-   uint32_t                  startOfSlotReference;    // the time refer to the beginning of slot
+    // misc
+    asn_t                     asn;                     // current absolute slot number
+    slotOffset_t              slotOffset;              // current slot offset
+    slotOffset_t              nextActiveSlotOffset;    // next active slot offset
+    PORT_TIMER_WIDTH          deSyncTimeout;           // how many slots left before looses sync
+    bool                      isSync;                  // TRUE iff mote is synchronized to network
+    OpenQueueEntry_t          localCopyForTransmission;// copy of the frame used for current TX
+    PORT_TIMER_WIDTH          numOfSleepSlots;         // number of slots to sleep between active slots
+    // as shown on the chronogram
+    ieee154e_state_t          state;                   // state of the FSM
+    OpenQueueEntry_t*         dataToSend;              // pointer to the data to send
+    OpenQueueEntry_t*         dataReceived;            // pointer to the data received
+    OpenQueueEntry_t*         ackToSend;               // pointer to the ack to send
+    OpenQueueEntry_t*         ackReceived;             // pointer to the ack received
+    PORT_TIMER_WIDTH          lastCapturedTime;        // last captured time
+    PORT_TIMER_WIDTH          syncCapturedTime;        // captured time used to sync
+    // channel hopping
+    uint8_t                   freq;                    // frequency of the current slot
+    uint8_t                   asnOffset;               // offset inside the frame
+    uint8_t                   singleChannel;           // the single channel used for transmission
+    bool                      singleChannelChanged;    // detect id singleChannelChanged
+    uint8_t                   chTemplate[NUM_CHANNELS];// storing the template of hopping sequence
+    // template ID
+    uint8_t                   tsTemplateId;            // timeslot template id
+    uint8_t                   chTemplateId;            // channel hopping tempalte id
+
+    PORT_TIMER_WIDTH          radioOnInit;             // when within the slot the radio turns on
+    PORT_TIMER_WIDTH          radioOnTics;             // how many tics within the slot the radio is on
+    bool                      radioOnThisSlot;         // to control if the radio has been turned on in a slot.
+
+    // control
+    bool                      isAckEnabled;            // whether reply for ack, used for synchronization test
+    bool                      isSecurityEnabled;       // whether security is applied
+    // time correction
+    int16_t                   timeCorrection;          // store the timeCorrection, prepend and retrieve it inside of frame header
+
+    uint16_t                  slotDuration;            // duration of slot
+    opentimers_id_t           timerId;                 // id of timer used for implementing TSCH slot FSM
+    uint32_t                  startOfSlotReference;    // the time refer to the beginning of slot
+    opentimers_id_t           serialInhibitTimerId;    // id of serial inhibit timer used for scheduling serial output
+
+    // for msf downstream traffic adaptation
+    uint32_t                  receivedFrameFromParent; // True when received a frame from parent
 } ieee154e_vars_t;
 
 BEGIN_PACK
@@ -307,6 +310,7 @@ void               ieee154e_setSlotDuration(uint16_t duration);
 uint16_t           ieee154e_getSlotDuration(void);
 
 uint16_t           ieee154e_getTimeCorrection(void);
+void               ieee154e_getTicsInfo(uint32_t* numTicsOn, uint32_t* numTicsTotal);
 // events
 void               ieee154e_startOfFrame(PORT_TIMER_WIDTH capturedTime);
 void               ieee154e_endOfFrame(PORT_TIMER_WIDTH capturedTime);

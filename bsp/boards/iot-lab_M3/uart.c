@@ -20,8 +20,10 @@
 //=========================== variables =======================================
 
 typedef struct {
-   uart_tx_cbt txCb;
-   uart_rx_cbt rxCb;
+    uart_tx_cbt txCb;
+    uart_rx_cbt rxCb;
+    bool        fXonXoffEscaping;
+    uint8_t     xonXoffEscapedByte;
 } uart_vars_t;
 
 uart_vars_t uart_vars;
@@ -30,7 +32,7 @@ uart_vars_t uart_vars;
 
 //=========================== public ==========================================
 
-void uart_init() {
+void uart_init(void) {
     
     GPIO_InitTypeDef  GPIO_InitStructure;
     USART_InitTypeDef USART_InitStructure;
@@ -76,39 +78,59 @@ void uart_setCallbacks(uart_tx_cbt txCb, uart_rx_cbt rxCb) {
     uart_vars.rxCb = rxCb;
 }
 
-void uart_enableInterrupts() {
+void uart_enableInterrupts(void) {
     USART_ITConfig(USART1, USART_IT_TC,   ENABLE);
     USART_ITConfig(USART1, USART_IT_RXNE, ENABLE);
 }
 
-void uart_disableInterrupts() {
+void uart_disableInterrupts(void) {
     USART_ITConfig(USART1, USART_IT_TC,   DISABLE);
     USART_ITConfig(USART1, USART_IT_RXNE, DISABLE);
 }
 
-void uart_clearRxInterrupts(){}
+void uart_clearRxInterrupts(void) {}
 
-void uart_clearTxInterrupts() {
+void uart_clearTxInterrupts(void) {
     USART_ClearFlag(USART1, USART_FLAG_TC);
 }
 
-void uart_writeByte(uint8_t byteToWrite) {
-    USART_SendData(USART1,(uint16_t)byteToWrite);
+void uart_setCTS(bool state) {
+    
+    if (state==0x01) {
+        USART_SendData(USART1,(uint16_t)XON);
+    } else {
+        USART_SendData(USART1,(uint16_t)XOFF);
+    }
 }
 
-uint8_t uart_readByte() {
+void uart_writeByte(uint8_t byteToWrite) {
+    if (byteToWrite==XON || byteToWrite==XOFF || byteToWrite==XONXOFF_ESCAPE) {
+        uart_vars.fXonXoffEscaping     = 0x01;
+        uart_vars.xonXoffEscapedByte   = byteToWrite;
+        USART_SendData(USART1,(uint16_t)XONXOFF_ESCAPE);
+    } else {
+        USART_SendData(USART1,(uint16_t)byteToWrite);
+    }
+}
+
+uint8_t uart_readByte(void) {
     return (uint8_t)USART_ReceiveData(USART1);
 }
 
 //=========================== interrupt handlers ==============================
 
-kick_scheduler_t uart_tx_isr() {
+kick_scheduler_t uart_tx_isr(void) {
     uart_clearTxInterrupts();
-    uart_vars.txCb();
+    if (uart_vars.fXonXoffEscaping==0x01) {
+        uart_vars.fXonXoffEscaping = 0x00;
+        USART_SendData(USART1,(uint16_t)uart_vars.xonXoffEscapedByte^XONXOFF_MASK);
+    } else {
+        uart_vars.txCb();
+    }
     return DO_NOT_KICK_SCHEDULER;
 }
 
-kick_scheduler_t uart_rx_isr() {
+kick_scheduler_t uart_rx_isr(void) {
     uart_vars.rxCb();
     return DO_NOT_KICK_SCHEDULER;
 }

@@ -11,7 +11,7 @@
 #include "idmanager.h"
 #include "openqueue.h"
 #include "neighbors.h"
-#include "sf0.h"
+#include "msf.h"
 
 //=========================== defines =========================================
 
@@ -36,9 +36,9 @@ void    c6t_sendDone(
 
 //=========================== public ==========================================
 
-void c6t_init() {
-   if(idmanager_getIsDAGroot()==TRUE) return; 
-   
+void c6t_init(void) {
+   if(idmanager_getIsDAGroot()==TRUE) return;
+
    // prepare the resource descriptor for the /6t path
    c6t_vars.desc.path0len            = sizeof(c6t_path0)-1;
    c6t_vars.desc.path0val            = (uint8_t*)(&c6t_path0);
@@ -49,7 +49,7 @@ void c6t_init() {
    c6t_vars.desc.discoverable        = TRUE;
    c6t_vars.desc.callbackRx          = &c6t_receive;
    c6t_vars.desc.callbackSendDone    = &c6t_sendDone;
-   
+
    opencoap_register(&c6t_vars.desc);
 }
 
@@ -76,16 +76,16 @@ owerror_t c6t_receive(OpenQueueEntry_t* msg,
    bool                 foundNeighbor;
    cellInfo_ht          celllist_add[CELLLIST_MAX_LEN];
    cellInfo_ht          celllist_delete[CELLLIST_MAX_LEN];
-   
+
    switch (coap_header->Code) {
-      
+
       case COAP_CODE_REQ_PUT:
          // add a slot
-         
+
          // reset packet payload
          msg->payload                  = &(msg->packet[127]);
          msg->length                   = 0;
-         
+
          // get preferred parent
          foundNeighbor = icmpv6rpl_getPreferredParentEui64(&neighbor);
          if (foundNeighbor==FALSE) {
@@ -93,8 +93,8 @@ owerror_t c6t_receive(OpenQueueEntry_t* msg,
             coap_header->Code          = COAP_CODE_RESP_PRECONDFAILED;
             break;
          }
-         
-         if (sf0_candidateAddCellList(celllist_add,1)==FALSE){
+
+         if (msf_candidateAddCellList(celllist_add,1)==FALSE){
             // set the CoAP header
             outcome                       = E_FAIL;
             coap_header->Code             = COAP_CODE_RESP_CHANGED;
@@ -105,26 +105,26 @@ owerror_t c6t_receive(OpenQueueEntry_t* msg,
             IANA_6TOP_CMD_ADD,                  // code
             &neighbor,                          // neighbor
             1,                                  // number cells
-            LINKOPTIONS_TX,                     // cellOptions
+            CELLOPTIONS_TX,                     // cellOptions
             celllist_add,                       // celllist to add
             NULL,                               // celllist to delete (not used)
-            sf0_getsfid(),                      // sfid
+            msf_getsfid(),                      // sfid
             0,                                  // list command offset (not used)
             0                                   // list command maximum celllist (not used)
          );
-         
+
          // set the CoAP header
          coap_header->Code             = COAP_CODE_RESP_CHANGED;
 
          break;
-      
+
       case COAP_CODE_REQ_DELETE:
          // delete a slot
-         
+
          // reset packet payload
          msg->payload                  = &(msg->packet[127]);
          msg->length                   = 0;
-         
+
          // get preferred parent
          foundNeighbor = icmpv6rpl_getPreferredParentEui64(&neighbor);
          if (foundNeighbor==FALSE) {
@@ -132,9 +132,9 @@ owerror_t c6t_receive(OpenQueueEntry_t* msg,
             coap_header->Code          = COAP_CODE_RESP_PRECONDFAILED;
             break;
          }
-         
+
          // call sixtop
-         if (sf0_candidateRemoveCellList(celllist_delete,&neighbor,1)==FALSE){
+         if (msf_candidateRemoveCellList(celllist_delete,&neighbor,1, CELLTYPE_TX)==FALSE){
             // set the CoAP header
             outcome                       = E_FAIL;
             coap_header->Code             = COAP_CODE_RESP_CHANGED;
@@ -145,23 +145,23 @@ owerror_t c6t_receive(OpenQueueEntry_t* msg,
             IANA_6TOP_CMD_ADD,                  // code
             &neighbor,                          // neighbor
             1,                                  // number cells
-            LINKOPTIONS_TX,                     // cellOptions
+            CELLOPTIONS_TX,                     // cellOptions
             celllist_add,                       // celllist to add
             NULL,                               // celllist to delete (not used)
-            sf0_getsfid(),                      // sfid
+            msf_getsfid(),                      // sfid
             0,                                  // list command offset (not used)
             0                                   // list command maximum celllist (not used)
          );
-         
+
          // set the CoAP header
          coap_header->Code             = COAP_CODE_RESP_CHANGED;
          break;
-         
+
       default:
          outcome = E_FAIL;
          break;
    }
-   
+
    return outcome;
 }
 

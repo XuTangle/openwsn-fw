@@ -13,7 +13,7 @@
 
 //=========================== define ==========================================
 
-#define QUEUELENGTH  10
+#define QUEUELENGTH  20
 
 //=========================== typedef =========================================
 
@@ -37,21 +37,20 @@ bool               debugPrint_queue(void);
 OpenQueueEntry_t*  openqueue_getFreePacketBuffer(uint8_t creator);
 owerror_t          openqueue_freePacketBuffer(OpenQueueEntry_t* pkt);
 void               openqueue_removeAllCreatedBy(uint8_t creator);
-void               openqueue_removeAllOwnedBy(uint8_t owner);
 bool               openqueue_isHighPriorityEntryEnough(void);
+// called by ICMPv6
+void               openqueue_updateNextHopPayload(open_addr_t* newNextHop);
 // called by res
 OpenQueueEntry_t*  openqueue_sixtopGetSentPacket(void);
 OpenQueueEntry_t*  openqueue_sixtopGetReceivedPacket(void);
+uint8_t            openqueue_getNum6PResp(void);
+uint8_t            openqueue_getNum6PReq(open_addr_t* neighbor);
+void               openqueue_remove6PrequestToNeighbor(open_addr_t* neighbor);
 // called by IEEE80215E
-OpenQueueEntry_t*  openqueue_macGetDataPacket(open_addr_t* toNeighbor);
 OpenQueueEntry_t*  openqueue_macGetEBPacket(void);
+OpenQueueEntry_t*  openqueue_macGetKaPacket(open_addr_t* toNeighbor);
 OpenQueueEntry_t*  openqueue_macGetDIOPacket(void);
-OpenQueueEntry_t*  openqueue_macGetPacketCreatedBy(uint8_t creator,open_addr_t* toNeighbor);
-// called by sf0
-uint8_t            openqueue_macGetNumberOfPacketCreatedBy(uint8_t creator);
-// called by icmpv6rpl to update outgoing route
-OpenQueueEntry_t*  openqueue_rplGetSentToNonParentPackets(open_addr_t* newNexthop);
-
+OpenQueueEntry_t*  openqueue_macGetUnicastPakcet(open_addr_t* toNeighbor);
 /**
 \}
 \}

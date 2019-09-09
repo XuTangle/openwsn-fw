@@ -8,8 +8,6 @@
 
 //=========================== defines =========================================
 
-#define OUTPUT_BUFFER_MASK 0x03FF
-
 //=========================== variables =======================================
 
 //=========================== prototypes ======================================
@@ -190,7 +188,7 @@ void uart_writeCircularBuffer_FASTSIM(OpenMote* self, uint8_t* buffer, uint16_t*
    while (*outputBufIdxR!=*outputBufIdxW) {
       
       // get element at outputBufIdxR
-      item    = PyInt_FromLong(buffer[*outputBufIdxR]);
+      item    = PyInt_FromLong(buffer[OUTPUT_BUFFER_MASK & *outputBufIdxR]);
       res     = PyList_SetItem(frame,i,item);
       if (res!=0) {
          printf("[CRITICAL] uart_writeCircularBuffer_FASTSIM() failed setting list item\r\n");
@@ -199,7 +197,6 @@ void uart_writeCircularBuffer_FASTSIM(OpenMote* self, uint8_t* buffer, uint16_t*
       
       // increment index
       (*outputBufIdxR)++;
-      (*outputBufIdxR) = (*outputBufIdxR) & OUTPUT_BUFFER_MASK;
       i++;
    }
    arglist    = Py_BuildValue("(O)",frame);
@@ -291,6 +288,35 @@ uint8_t uart_readByte(OpenMote* self) {
    
    return returnVal;
 }
+
+#ifdef FASTSIM
+void uart_setCTS(OpenMote* self, bool state) {
+   printf("[CRITICAL] uart_setCTS() should not be called\r\n");
+}
+#else
+void uart_setCTS(OpenMote* self, bool state) {
+   PyObject*   result;
+   PyObject*   arglist;
+   
+#ifdef TRACE_ON
+   printf("C@0x%x: uart_setCTS()... \n",self);
+#endif
+   
+   // forward to Python
+   arglist    = Py_BuildValue("(i)",state);
+   result     = PyObject_CallObject(self->callback[MOTE_NOTIF_uart_setCTS],arglist);
+   if (result == NULL) {
+      printf("[CRITICAL] uart_setCTS() returned NULL\r\n");
+      return;
+   }
+   Py_DECREF(result);
+   Py_DECREF(arglist);
+   
+#ifdef TRACE_ON
+   printf("C@0x%x: ...done.\n",self);
+#endif
+}
+#endif
 
 //=========================== interrupt handlers ==============================
 
