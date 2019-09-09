@@ -12,9 +12,22 @@
 
 #include "msf.h"
 
+#include "adc_sensor.h"
+
+#include <headers/hw_memmap.h>
+#include <headers/hw_cctest.h>
+#include <source/gpio.h>
+#include <source/adc.h>
+#include <headers/hw_rfcore_xreg.h>
 //=========================== defines =========================================
 
 #define UINJECT_TRAFFIC_RATE 2 ///> the value X indicates 1 packet/X minutes
+
+// ########## DEFINES FOR TEMPERATURE SENSOR ##################
+#define CONST 0.58134 //(VREF / 2047) = (1190 / 2047), VREF from Datasheet
+#define OFFSET_DATASHEET_25C 827 // 1422*CONST, from Datasheet
+#define TEMP_COEFF (CONST * 4.2) // From Datasheet
+#define OFFSET_0C (OFFSET_DATASHEET_25C - (25 * TEMP_COEFF))
 
 //=========================== variables =======================================
 
@@ -99,6 +112,9 @@ void uinject_task_cb(void) {
     uint32_t             ticksOn;
     uint32_t             ticksInTotal;
 
+    uint16_t             ui16Dummy;
+    double               dOutputVoltage;
+
     // don't run if not synch
     if (ieee154e_isSynch() == FALSE) {
         return;
@@ -106,8 +122,8 @@ void uinject_task_cb(void) {
 
     // don't run on dagroot
     if (idmanager_getIsDAGroot()) {
-        opentimers_destroy(uinject_vars.timerId);
-        return;
+      opentimers_destroy(uinject_vars.timerId);
+      return;
     }
 
     foundNeighbor = icmpv6rpl_getPreferredParentEui64(&parentNeighbor);
@@ -149,6 +165,41 @@ void uinject_task_cb(void) {
     // add payload
     packetfunctions_reserveHeaderSize(pkt,sizeof(uinject_payload)-1);
     memcpy(&pkt->payload[0],uinject_payload,sizeof(uinject_payload)-1);
+
+    GPIOPinTypeGPIOInput(GPIO_D_BASE, GPIO_PIN_4);
+    GPIOPinTypeGPIOInput(GPIO_D_BASE, GPIO_PIN_5);
+
+    // Connect temp sensor to ADC
+    HWREG(CCTEST_TR0) |= CCTEST_TR0_ADCTM;
+
+    // Enable the temperature sensor
+    HWREG(RFCORE_XREG_ATEST) = 0x01;
+
+    // Configure ADC, Internal reference, 512 decimation rate (12bit)
+    SOCADCSingleConfigure(SOCADC_12_BIT, SOCADC_REF_INTERNAL);
+
+    // Trigger single conversion on internal temp sensor
+    SOCADCSingleStart(SOCADC_TEMP_SENS);
+
+    // Wait until conversion is completed
+    while(!SOCADCEndOfCOnversionGet()){}
+
+    // Get data and shift down based on decimation rate
+    ui16Dummy = SOCADCDataGet() >> SOCADC_12_BIT_RSHIFT;
+
+    // Convert to temperature
+    dOutputVoltage = ui16Dummy * CONST;
+    dOutputVoltage = ((dOutputVoltage - OFFSET_0C) / TEMP_COEFF);
+
+    // Disable the temperature sensor
+    HWREG(RFCORE_XREG_ATEST) = 0x00;
+
+    // Disconnect temp sensor to ADC
+    HWREG(CCTEST_TR0) = 0x0;
+
+    packetfunctions_reserveHeaderSize(pkt,sizeof(uint16_t));
+    pkt->payload[1] = (uint8_t)(((int)dOutputVoltage & 0xff00)>>8);
+    pkt->payload[0] = (uint8_t)((int)dOutputVoltage & 0x00ff);
 
     packetfunctions_reserveHeaderSize(pkt,sizeof(uint16_t));
     pkt->payload[1] = (uint8_t)((uinject_vars.counter & 0xff00)>>8);
