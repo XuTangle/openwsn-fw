@@ -35,6 +35,49 @@ void bspDBpinToggle(uint32_t base,uint8_t ui8Pin);
 
 //=========================== public ==========================================
 
+#ifdef MIMSY2
+
+
+void debugpins_init(void){}
+
+void debugpins_frame_toggle(void){}
+void debugpins_frame_clr(void){}
+void debugpins_frame_set(void){}
+
+void debugpins_slot_toggle(void){}
+void debugpins_slot_clr(void){}
+void debugpins_slot_set(void){}
+
+void debugpins_fsm_toggle(void){}
+void debugpins_fsm_clr(void){}
+void debugpins_fsm_set(void){}
+
+void debugpins_task_toggle(void){}
+void debugpins_task_clr(void){}
+void debugpins_task_set(void){}
+
+void debugpins_isr_toggle(void){}
+void debugpins_isr_clr(void){}
+void debugpins_isr_set(void){}
+
+void debugpins_isruarttx_toggle(void){}
+void debugpins_isruarttx_clr(void){}
+void debugpins_isruarttx_set(void){}
+
+void debugpins_isruartrx_toggle(void){}
+void debugpins_isruartrx_clr(void){}
+void debugpins_isruartrx_set(void){}
+
+void debugpins_radio_toggle(void){}
+void debugpins_radio_clr(void){}
+void debugpins_radio_set(void){}
+
+void debugpins_intdisabled_toggle(void){}
+void debugpins_intdisabled_clr(void){}
+void debugpins_intdisabled_set(void){}
+
+#else
+
 void debugpins_init(void) {
     GPIOPinTypeGPIOOutput(BSP_PINA_BASE, BSP_PINA_2 | BSP_PINA_4 | BSP_PINA_5);
     GPIOPinTypeGPIOOutput(BSP_PIND_BASE, BSP_PIND_3 | BSP_PIND_2 | BSP_PIND_1);
@@ -130,6 +173,8 @@ void debugpins_radio_clr(void) {
 void debugpins_radio_set(void) {
     GPIOPinWrite(BSP_PINA_BASE, BSP_PINA_2, BSP_PINA_2);
 }
+
+#endif
 
 //------------ private ------------//
 
