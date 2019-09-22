@@ -269,6 +269,7 @@ typedef struct {
 
     // for msf downstream traffic adaptation
     uint32_t                  receivedFrameFromParent; // True when received a frame from parent
+    uint8_t                   compensatingCounter;     //  counter for openmote-cc2538 (Rev E, clock at 32765Hz)
 } ieee154e_vars_t;
 
 BEGIN_PACK

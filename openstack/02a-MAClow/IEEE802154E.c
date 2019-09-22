@@ -278,14 +278,31 @@ This function executes in ISR mode, when the new slot timer fires.
 void isr_ieee154e_newSlot(opentimers_id_t id) {
 
     ieee154e_vars.startOfSlotReference = opentimers_getCurrentCompareValue();
-    opentimers_scheduleAbsolute(
-        ieee154e_vars.timerId,                  // timerId
-        TsSlotDuration,                         // duration
-        ieee154e_vars.startOfSlotReference,     // reference
-        TIME_TICS,                              // timetype
-        isr_ieee154e_newSlot                    // callback
-    );
-    ieee154e_vars.slotDuration          = TsSlotDuration;
+
+    // the openmote-cc2538 clock on 32765Hz
+    // use the adaptive synchronization to compensate this
+    if (ieee154e_vars.compensatingCounter == 0 && idmanager_getIsDAGroot()==TRUE){
+        opentimers_scheduleAbsolute(
+            ieee154e_vars.timerId,                  // timerId
+            TsSlotDuration-1,                       // duration
+            ieee154e_vars.startOfSlotReference,     // reference
+            TIME_TICS,                              // timetype
+            isr_ieee154e_newSlot                    // callback
+        );
+        ieee154e_vars.compensatingCounter = 16;
+        ieee154e_vars.slotDuration          = TsSlotDuration-1;
+    } else {
+        opentimers_scheduleAbsolute(
+            ieee154e_vars.timerId,                  // timerId
+            TsSlotDuration,                         // duration
+            ieee154e_vars.startOfSlotReference,     // reference
+            TIME_TICS,                              // timetype
+            isr_ieee154e_newSlot                    // callback
+        );
+        ieee154e_vars.slotDuration          = TsSlotDuration;
+    }
+    ieee154e_vars.compensatingCounter -= 1;
+
     // radiotimer_setPeriod(ieee154e_vars.slotDuration);
     if (ieee154e_vars.isSync==FALSE) {
         if (idmanager_getIsDAGroot()==TRUE) {
