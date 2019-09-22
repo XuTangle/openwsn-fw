@@ -21,7 +21,7 @@
 #include <headers/hw_rfcore_xreg.h>
 //=========================== defines =========================================
 
-#define UINJECT_TRAFFIC_RATE 2 ///> the value X indicates 1 packet/X minutes
+#define UINJECT_TRAFFIC_RATE 1 ///> the value X indicates 1 packet/X minutes
 
 // ########## DEFINES FOR TEMPERATURE SENSOR ##################
 #define CONST 0.58134 //(VREF / 2047) = (1190 / 2047), VREF from Datasheet
